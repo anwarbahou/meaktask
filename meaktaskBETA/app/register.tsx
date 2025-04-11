@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Dimensions, Animated, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Dimensions, Animated, ActivityIndicator, Alert } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -24,6 +24,8 @@ export default function RegisterScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [emailConfirmationSent, setEmailConfirmationSent] = useState(false);
   const router = useRouter();
   const words = ['خلّص', 'سير', 'كول', 'جيب', 'خلّص', 'خدم', 'خزّن', 'شري', 'تقدّى', 'طلب'];
   const [animatedWords, setAnimatedWords] = useState<AnimatedWord[]>([]);
@@ -46,152 +48,226 @@ export default function RegisterScreen() {
     };
   };
 
-  // Start a new word animation
-  const startWordAnimation = (wordObj: AnimatedWord) => {
-    const animDuration = 6000 + Math.random() * 2000; // 6-8 seconds (was 12-17 seconds)
-    
-    Animated.parallel([
-      Animated.timing(wordObj.translateY, {
-        toValue: height + 100,
-        duration: animDuration,
-        useNativeDriver: true,
-      }),
-      Animated.sequence([
-        Animated.timing(wordObj.opacity, {
-          toValue: 0.7,
-          duration: 500, // Was 1000ms
-          useNativeDriver: true,
-        }),
-        Animated.timing(wordObj.opacity, {
-          toValue: 0.7,
-          duration: animDuration - 1000, // Was 2000ms
-          useNativeDriver: true,
-        }),
-        Animated.timing(wordObj.opacity, {
-          toValue: 0,
-          duration: 500, // Was 1000ms
-          useNativeDriver: true,
-        }),
-      ]),
-    ]).start(() => {
-      // Remove this word from state when animation completes
-      setAnimatedWords(current => current.filter(w => w.id !== wordObj.id));
-    });
-  };
-
-  // Add a new word at intervals
+  // Start the animation loop
   useEffect(() => {
-    const addNewWord = () => {
+    const startAnimation = () => {
+      // Create a new word
       const newWord = generateWord();
-      setAnimatedWords(current => [...current, newWord]);
-      startWordAnimation(newWord);
+      setAnimatedWords(prev => [...prev, newWord]);
+      
+      // Animate the word
+      Animated.parallel([
+        Animated.timing(newWord.translateY, {
+          toValue: height + 100, // Move to bottom of screen
+          duration: 8000 + Math.random() * 4000, // Random duration between 8-12 seconds
+          useNativeDriver: false, // Changed to false to fix warning
+        }),
+        Animated.sequence([
+          Animated.timing(newWord.opacity, {
+            toValue: 0.8, // Fade in
+            duration: 1000,
+            useNativeDriver: false, // Changed to false to fix warning
+          }),
+          Animated.delay(6000 + Math.random() * 4000), // Random delay
+          Animated.timing(newWord.opacity, {
+            toValue: 0, // Fade out
+            duration: 1000,
+            useNativeDriver: false, // Changed to false to fix warning
+          }),
+        ]),
+      ]).start(() => {
+        // Remove the word after animation completes
+        setAnimatedWords(prev => prev.filter(word => word.id !== newWord.id));
+      });
     };
-
-    // Add initial words
+    
+    // Start with a few words
     for (let i = 0; i < 5; i++) {
-      setTimeout(() => addNewWord(), i * 600); // Was 1200ms
+      setTimeout(() => {
+        startAnimation();
+      }, i * 2000); // Stagger the start times
     }
-
-    // Add new words periodically
-    const interval = setInterval(() => {
-      addNewWord();
-    }, 1500); // Was 2500ms
-
+    
+    // Continue adding new words
+    const interval = setInterval(startAnimation, 3000);
+    
     return () => clearInterval(interval);
   }, []);
 
-  // Hide any menu or slide menu when this screen is shown
-  useEffect(() => {
-    // This component will fully handle navigation UI itself
-    // No headers or menus should be visible
-    return () => {
-      // Clean up on unmount if needed
-    };
-  }, []);
-
   const handleRegister = async () => {
-    // Reset error state
+    // Reset error
     setError('');
-    
+
     try {
-      // Validate inputs
-      if (!name || !email || !password || !confirmPassword) {
-        setError('Please fill in all fields');
+      // Input validation with specific error messages
+      if (!name.trim()) {
+        setError('Please enter your full name');
         return;
       }
-      
+
+      if (!email.trim()) {
+        setError('Please enter your email address');
+        return;
+      }
+
+      if (!password) {
+        setError('Please enter a password');
+        return;
+      }
+
+      if (!confirmPassword) {
+        setError('Please confirm your password');
+        return;
+      }
+
       if (password !== confirmPassword) {
         setError('Passwords do not match');
         return;
       }
-      
-      if (password.length < 8) {
-        setError('Password must be at least 8 characters long');
+
+      if (password.length < 6) {
+        setError('Password must be at least 6 characters long');
         return;
       }
-      
-      // Email validation using regex
+
+      // Enhanced password validation
+      if (!/(?=.*[A-Za-z])(?=.*\d)/.test(password)) {
+        setError('Password must contain both letters and numbers');
+        return;
+      }
+
+      // Email validation with detailed feedback
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
         setError('Please enter a valid email address');
         return;
       }
-      
+
       setIsLoading(true);
-      
-      console.log('Attempting to register with:', { name, email, password: '********' });
-      
-      // Call API to register user
-      const response = await authService.register({
-        name,
-        email,
+      setError('');
+
+      console.log('Starting registration process...');
+      const result = await authService.register({
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
         password
       });
-      
-      console.log('Registration successful response:', response);
-      
-      // Ensure token exists before storing
-      if (!response || !response.token) {
-        throw new Error('Invalid response from server');
-      }
-      
-      // Store the token in AsyncStorage
-      await AsyncStorage.setItem('userToken', response.token);
-      
-      // Store user data for profile access
-      if (response.user) {
-        // Make sure it includes name and email
-        const userData = {
-          ...response.user,
-          name: name, // Ensure name is always available
-          email: email // Ensure email is always available
-        };
-        console.log('Storing user data:', userData);
-        await AsyncStorage.setItem('userData', JSON.stringify(userData));
+
+      console.log('Registration completed:', result);
+
+      if (result.user) {
+        // Store user data
+        await AsyncStorage.setItem('userData', JSON.stringify(result.user));
+        
+        if (result.emailConfirmationSent) {
+          console.log('Email confirmation was sent');
+          setEmailConfirmationSent(true);
+          setRegistrationSuccess(true);
+        } else if (result.session) {
+          console.log('User is already confirmed, redirecting to main app');
+          // If we have a session, the user is already confirmed
+          router.replace('/(tabs)');
+        } else {
+          console.error('Registration completed but no session was created');
+          setError('Registration completed but no session was created. Please try logging in.');
+        }
       } else {
-        // If no user object in response, create user data from registration info
-        const userData = { name, email };
-        console.log('Creating user data from registration details:', userData);
-        await AsyncStorage.setItem('userData', JSON.stringify(userData));
+        console.error('Registration failed - no user data returned');
+        setError('Registration failed. Please try again.');
       }
+    } catch (error: any) {
+      console.error('Registration error:', error);
       
-      // Navigate to the main screen after successful registration
-      router.replace('/');
-    } catch (err: any) {
-      console.error('Registration error details:', err);
-      
-      // Handle different types of errors more gracefully
-      if (typeof err === 'string') {
-        setError(err);
-      } else if (err.message) {
-        setError(err.message);
+      // Handle specific Supabase error messages
+      if (error.message?.toLowerCase().includes('email')) {
+        if (error.message.toLowerCase().includes('taken')) {
+          setError('This email address is already registered. Please try logging in instead.');
+        } else {
+          setError('Please enter a valid email address.');
+        }
+      } else if (error.message?.toLowerCase().includes('password')) {
+        setError('Password error: ' + error.message);
+      } else if (error.message?.toLowerCase().includes('network')) {
+        setError('Network error. Please check your internet connection and try again.');
+      } else if (error.message?.toLowerCase().includes('rate limit')) {
+        setError('Too many attempts. Please wait a few minutes and try again.');
+      } else if (error.message?.toLowerCase().includes('profile')) {
+        setError('Error creating user profile: ' + error.message);
       } else {
-        setError('Registration failed. Please try again later.');
+        setError(error.message || 'Registration failed. Please try again.');
       }
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleResendConfirmation = async () => {
+    setIsLoading(true);
+    try {
+      const result = await authService.resendConfirmationEmail();
+      if (result.success) {
+        Alert.alert(
+          'Confirmation Email Sent',
+          'Please check your email for the confirmation link.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        setError(result.error || 'Failed to resend confirmation email');
+      }
+    } catch (error: any) {
+      setError(error.message || 'Failed to resend confirmation email');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLoginInstead = () => {
+    router.push('/login');
+  };
+
+  // If registration was successful and email confirmation was sent
+  if (registrationSuccess && emailConfirmationSent) {
+    return (
+      <LinearGradient
+        colors={['#4a9e8a', '#3b8a7a', '#2c7466']}
+        style={styles.container}
+      >
+        <Stack.Screen options={{ headerShown: false }} />
+        
+        <View style={styles.successContainer}>
+          <View style={styles.successCard}>
+            <Ionicons name="mail-outline" size={80} color="#4a9e8a" style={styles.successIcon} />
+            <Text style={styles.successTitle}>Check Your Email</Text>
+            <Text style={styles.successText}>
+              We've sent a confirmation email to {email}. Please check your inbox and click the confirmation link to complete your registration.
+            </Text>
+            <Text style={styles.successNote}>
+              If you don't see the email, check your spam folder.
+            </Text>
+            
+            <TouchableOpacity 
+              style={styles.resendButton} 
+              onPress={handleResendConfirmation}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text style={styles.resendButtonText}>Resend Confirmation Email</Text>
+              )}
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.loginInsteadButton} 
+              onPress={handleLoginInstead}
+            >
+              <Text style={styles.loginInsteadText}>Already confirmed? Log in</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </LinearGradient>
+    );
+  }
 
   return (
     <LinearGradient
@@ -254,7 +330,7 @@ export default function RegisterScreen() {
           <Text style={styles.label}>Password</Text>
           <TextInput
             style={styles.input}
-            placeholder="Minimum 8 characters"
+            placeholder="Minimum 6 characters"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -386,6 +462,75 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   loginLink: {
+    color: '#00a67d',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  // Success screen styles
+  successContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  successCard: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 30,
+    width: '100%',
+    maxWidth: 500,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  successIcon: {
+    marginBottom: 20,
+  },
+  successTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  successText: {
+    fontSize: 16,
+    color: '#666666',
+    marginBottom: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  successNote: {
+    fontSize: 14,
+    color: '#999999',
+    marginBottom: 25,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  resendButton: {
+    backgroundColor: '#00a67d',
+    borderRadius: 10,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 15,
+  },
+  resendButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  loginInsteadButton: {
+    paddingVertical: 10,
+  },
+  loginInsteadText: {
     color: '#00a67d',
     fontSize: 14,
     fontWeight: '500',

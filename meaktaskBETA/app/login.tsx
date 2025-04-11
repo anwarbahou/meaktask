@@ -23,6 +23,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [emailNotConfirmed, setEmailNotConfirmed] = useState(false);
   const [isCheckingConnection, setIsCheckingConnection] = useState(false);
   const words = ['خلّص', 'سير', 'كول', 'جيب', 'خلّص', 'خدم', 'خزّن', 'شري', 'تقدّى', 'طلب'];
   const [animatedWords, setAnimatedWords] = useState<AnimatedWord[]>([]);
@@ -49,9 +50,9 @@ export default function LoginScreen() {
     
     if (!isConnected) {
       Alert.alert(
-        "Connection Error",
-        "Unable to connect to the server. The app may not function correctly. Please ensure your server is running and the IP address is correctly configured.",
-        [{ text: "OK" }]
+        'Connection Error',
+        'Unable to connect to the server. Please check your internet connection and try again.',
+        [{ text: 'OK' }]
       );
     }
   };
@@ -74,121 +75,158 @@ export default function LoginScreen() {
     };
   };
 
-  // Start a new word animation
-  const startWordAnimation = (wordObj: AnimatedWord) => {
-    const animDuration = 6000 + Math.random() * 2000; // 6-8 seconds (was 12-17 seconds)
-    
-    Animated.parallel([
-      Animated.timing(wordObj.translateY, {
-        toValue: height + 100,
-        duration: animDuration,
-        useNativeDriver: true,
-      }),
-      Animated.sequence([
-        Animated.timing(wordObj.opacity, {
-          toValue: 0.7,
-          duration: 500, // Was 1000ms
-          useNativeDriver: true,
-        }),
-        Animated.timing(wordObj.opacity, {
-          toValue: 0.7,
-          duration: animDuration - 1000, // Was 2000ms
-          useNativeDriver: true,
-        }),
-        Animated.timing(wordObj.opacity, {
-          toValue: 0,
-          duration: 500, // Was 1000ms
-          useNativeDriver: true,
-        }),
-      ]),
-    ]).start(() => {
-      // Remove this word from state when animation completes
-      setAnimatedWords(current => current.filter(w => w.id !== wordObj.id));
-    });
-  };
-
-  // Add a new word at intervals
+  // Start the animation loop
   useEffect(() => {
-    const addNewWord = () => {
+    const startAnimation = () => {
+      // Create a new word
       const newWord = generateWord();
-      setAnimatedWords(current => [...current, newWord]);
-      startWordAnimation(newWord);
+      setAnimatedWords(prev => [...prev, newWord]);
+      
+      // Animate the word
+      Animated.parallel([
+        Animated.timing(newWord.translateY, {
+          toValue: height + 100, // Move to bottom of screen
+          duration: 8000 + Math.random() * 4000, // Random duration between 8-12 seconds
+          useNativeDriver: true,
+        }),
+        Animated.sequence([
+          Animated.timing(newWord.opacity, {
+            toValue: 0.8, // Fade in
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.delay(6000 + Math.random() * 4000), // Random delay
+          Animated.timing(newWord.opacity, {
+            toValue: 0, // Fade out
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]).start(() => {
+        // Remove the word after animation completes
+        setAnimatedWords(prev => prev.filter(word => word.id !== newWord.id));
+      });
     };
-
-    // Add initial words
+    
+    // Start with a few words
     for (let i = 0; i < 5; i++) {
-      setTimeout(() => addNewWord(), i * 600); // Was 1200ms
+      setTimeout(() => {
+        startAnimation();
+      }, i * 2000); // Stagger the start times
     }
-
-    // Add new words periodically
-    const interval = setInterval(() => {
-      addNewWord();
-    }, 1500); // Was 2500ms
-
+    
+    // Continue adding new words
+    const interval = setInterval(startAnimation, 3000);
+    
     return () => clearInterval(interval);
   }, []);
 
   const handleLogin = async () => {
-    // Reset error
-    setError('');
-    
-    // Validate inputs
     if (!email || !password) {
       setError('Please enter both email and password');
       return;
     }
 
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError('Please enter a valid email address');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+
     try {
-      setIsLoading(true);
+      const result = await authService.login({ email, password });
       
-      // Check connection first
-      const isConnected = await checkApiConnection();
-      if (!isConnected) {
-        setError('Cannot connect to server. Please check your network connection and server status.');
-        return;
-      }
-      
-      // Call API endpoint for login
-      const response = await authService.login({
-        email,
-        password
-      });
-      
-      console.log('Login response data:', response);
-      
-      // Ensure token exists before storing
-      if (!response || !response.token) {
-        throw new Error('Invalid response from server');
-      }
-      
-      // Store the token in AsyncStorage
-      await AsyncStorage.setItem('userToken', response.token);
-      
-      // Store user data for profile access
-      if (response.user) {
-        // Make sure it includes email
-        const userData = {
-          ...response.user,
-          email: email // Ensure email is always available even if not in response
-        };
-        console.log('Storing user data:', userData);
-        await AsyncStorage.setItem('userData', JSON.stringify(userData));
+      if (result.user) {
+        // Check if email is not confirmed
+        if (result.emailNotConfirmed) {
+          setEmailNotConfirmed(true);
+          return;
+        }
+        
+        // Navigate to the main app
+        router.replace('/(tabs)');
       } else {
-        // If no user object in response, create minimal user data with email
-        const userData = { email };
-        console.log('Creating minimal user data:', userData);
-        await AsyncStorage.setItem('userData', JSON.stringify(userData));
+        setError('Login failed. Please check your credentials and try again.');
       }
-      
-      // Navigate to the main app after successful login
-      router.replace('/');
-    } catch (err: any) {
-      setError(err.toString());
-      console.error('Login failed:', err);
+    } catch (error: any) {
+      console.error('Login error:', error);
+      setError(error.message || 'Login failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleResendConfirmation = async () => {
+    setIsLoading(true);
+    try {
+      const result = await authService.resendConfirmationEmail();
+      if (result.success) {
+        Alert.alert(
+          'Confirmation Email Sent',
+          'Please check your email for the confirmation link.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        setError(result.error || 'Failed to resend confirmation email');
+      }
+    } catch (error: any) {
+      setError(error.message || 'Failed to resend confirmation email');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRegister = () => {
+    router.push('/register');
+  };
+
+  // If email is not confirmed
+  if (emailNotConfirmed) {
+    return (
+      <LinearGradient
+        colors={['#4a9e8a', '#3b8a7a', '#2c7466']}
+        style={styles.container}
+      >
+        <Stack.Screen options={{ headerShown: false }} />
+        
+        <View style={styles.successContainer}>
+          <View style={styles.successCard}>
+            <Ionicons name="mail-outline" size={80} color="#4a9e8a" style={styles.successIcon} />
+            <Text style={styles.successTitle}>Email Not Confirmed</Text>
+            <Text style={styles.successText}>
+              Your email address has not been confirmed yet. Please check your inbox and click the confirmation link to complete your registration.
+            </Text>
+            <Text style={styles.successNote}>
+              If you don't see the email, check your spam folder.
+            </Text>
+            
+            <TouchableOpacity 
+              style={styles.resendButton} 
+              onPress={handleResendConfirmation}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text style={styles.resendButtonText}>Resend Confirmation Email</Text>
+              )}
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.registerButton} 
+              onPress={handleRegister}
+            >
+              <Text style={styles.registerButtonText}>Create a new account</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </LinearGradient>
+    );
+  }
 
   return (
     <LinearGradient
@@ -267,7 +305,7 @@ export default function LoginScreen() {
         
         <View style={styles.signupContainer}>
           <Text style={styles.signupText}>Don't have an account? </Text>
-          <TouchableOpacity onPress={() => router.push('/')}>
+          <TouchableOpacity onPress={() => router.push('/register')}>
             <Text style={styles.signupLink}>Sign Up</Text>
           </TouchableOpacity>
         </View>
@@ -375,6 +413,75 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   signupLink: {
+    color: '#00a67d',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  // Email confirmation screen styles
+  successContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  successCard: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 30,
+    width: '100%',
+    maxWidth: 500,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  successIcon: {
+    marginBottom: 20,
+  },
+  successTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  successText: {
+    fontSize: 16,
+    color: '#666666',
+    marginBottom: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  successNote: {
+    fontSize: 14,
+    color: '#999999',
+    marginBottom: 25,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  resendButton: {
+    backgroundColor: '#00a67d',
+    borderRadius: 10,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 15,
+  },
+  resendButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  registerButton: {
+    paddingVertical: 10,
+  },
+  registerButtonText: {
     color: '#00a67d',
     fontSize: 14,
     fontWeight: '500',

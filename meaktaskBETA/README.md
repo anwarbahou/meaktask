@@ -1,50 +1,124 @@
-# Welcome to your Expo app 👋
+# MeakTask - Task Management App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A modern task management application built with React Native, Expo, and Supabase.
 
-## Get started
+## Features
 
-1. Install dependencies
+- User authentication (sign up, login, logout)
+- Task management (create, read, update, delete)
+- Task prioritization
+- Clean and intuitive UI
+- Cross-platform support (iOS, Android, web)
 
-   ```bash
+## Tech Stack
+
+- **Frontend**: React Native, Expo, TypeScript
+- **Backend**: Supabase (Authentication, Database, Storage)
+- **Styling**: React Native StyleSheet
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js (v14 or later)
+- npm or yarn
+- Expo CLI
+- Supabase account
+
+### Installation
+
+1. Clone the repository:
+   ```
+   git clone https://github.com/yourusername/meaktask.git
+   cd meaktask
+   ```
+
+2. Install dependencies:
+   ```
    npm install
+   # or
+   yarn install
    ```
 
-2. Start the app
+3. Set up Supabase:
+   - Create a new project on [Supabase](https://supabase.com)
+   - Create the following tables in your Supabase database:
+     - `tasks` table with columns: id, created_at, title, description, status, user_id, due_date, priority
+     - `profiles` table with columns: id, created_at, email, full_name, avatar_url
+   - Get your project URL and anon key from the Supabase dashboard
 
-   ```bash
-    npx expo start
+4. Configure environment variables:
+   - Copy `.env.example` to `.env`
+   - Update the `.env` file with your Supabase credentials:
+     ```
+     EXPO_PUBLIC_SUPABASE_URL=your_supabase_project_url
+     EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+     ```
+
+5. Start the development server:
+   ```
+   npm start
+   # or
+   yarn start
    ```
 
-In the output, you'll find options to open the app in a
+6. Run on your preferred platform:
+   ```
+   # For iOS
+   npm run ios
+   # or
+   yarn ios
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+   # For Android
+   npm run android
+   # or
+   yarn android
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+   # For web
+   npm run web
+   # or
+   yarn web
+   ```
 
-## Get a fresh project
+## Project Structure
 
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+meaktask/
+├── app/                  # Main application screens
+├── assets/               # Static assets (images, fonts)
+├── components/           # Reusable UI components
+├── constants/            # App constants and theme
+├── hooks/                # Custom React hooks
+├── lib/                  # Library code
+│   └── supabase/         # Supabase client and types
+├── utils/                # Utility functions
+└── ...
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Authentication Flow
 
-## Learn more
+The app uses Supabase Authentication for user management:
 
-To learn more about developing your project with Expo, look at the following resources:
+1. Users can sign up with email and password
+2. Users can log in with their credentials
+3. Authentication state is persisted using SecureStore
+4. Protected routes check for authentication status
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## Task Management
 
-## Join the community
+Tasks are stored in the Supabase database and include:
 
-Join our community of developers creating universal apps.
+- Title
+- Description (optional)
+- Status (pending, completed)
+- Priority (low, medium, high)
+- Due date (optional)
+- User ID (for ownership)
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

@@ -6,37 +6,34 @@ import {
   TouchableOpacity, 
   FlatList, 
   Platform,
-  StatusBar as RNStatusBar
+  StatusBar as RNStatusBar,
+  ActivityIndicator
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
+import { taskService } from '../utils/api';
+import { Database } from '../lib/supabase/types';
 
 // Get status bar height for proper UI positioning
 const STATUS_BAR_HEIGHT = Constants.statusBarHeight || 0;
 
-// Define Task type
-interface Task {
-  id: string;
-  title: string;
-  completed: boolean;
-}
-
-// Placeholder task data
-const TASKS: Task[] = [
-  { id: '1', title: 'Complete project proposal', completed: false },
-  { id: '2', title: 'Schedule team meeting', completed: true },
-  { id: '3', title: 'Research new technologies', completed: false },
-  { id: '4', title: 'Review client feedback', completed: false },
-  { id: '5', title: 'Update documentation', completed: true },
-];
+// Define Task type from Supabase
+type Task = Database['public']['Tables']['tasks']['Row'];
 
 // TaskItem component to ensure proper text rendering
-const TaskItem = ({ item }: { item: Task }) => (
+const TaskItem = ({ item, onToggle, onDelete }: { 
+  item: Task; 
+  onToggle: (id: string, completed: boolean) => void;
+  onDelete: (id: string) => void;
+}) => (
   <View style={styles.taskItem}>
-    <TouchableOpacity style={styles.checkbox}>
-      {item.completed ? (
+    <TouchableOpacity 
+      style={styles.checkbox}
+      onPress={() => onToggle(item.id, item.status !== 'completed')}
+    >
+      {item.status === 'completed' ? (
         <Ionicons name="checkmark-circle" size={24} color="#3b8a7a" />
       ) : (
         <Ionicons name="ellipse-outline" size={24} color="#999" />
@@ -44,66 +41,141 @@ const TaskItem = ({ item }: { item: Task }) => (
     </TouchableOpacity>
     <Text style={[
       styles.taskTitle, 
-      item.completed && styles.taskCompleted
+      item.status === 'completed' && styles.taskCompleted
     ]}>
       {item.title}
     </Text>
+    <TouchableOpacity 
+      style={styles.deleteButton}
+      onPress={() => onDelete(item.id)}
+    >
+      <Ionicons name="trash-outline" size={20} color="#ff6b6b" />
+    </TouchableOpacity>
   </View>
 );
 
 export default function TasksScreen() {
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-  
-  // Set status bar configuration for this screen
+
+  // Fetch tasks when component mounts
   useEffect(() => {
-    if (Platform.OS === 'ios') {
-      RNStatusBar.setBarStyle('dark-content');
-    }
+    fetchTasks();
   }, []);
-  
-  // Header component for safe text rendering
+
+  const fetchTasks = async () => {
+    try {
+      setLoading(true);
+      const data = await taskService.getTasks();
+      setTasks(data || []);
+      setError(null);
+    } catch (err: any) {
+      console.error('Error fetching tasks:', err);
+      setError(err.message || 'Failed to load tasks');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleTaskStatus = async (id: string, completed: boolean) => {
+    try {
+      const updatedTask = await taskService.updateTask(id, {
+        status: completed ? 'completed' : 'pending'
+      });
+      
+      if (updatedTask) {
+        setTasks(tasks.map(task => 
+          task.id === id ? updatedTask : task
+        ));
+      }
+    } catch (err: any) {
+      console.error('Error updating task:', err);
+      setError(err.message || 'Failed to update task');
+    }
+  };
+
+  const deleteTask = async (id: string) => {
+    try {
+      const success = await taskService.deleteTask(id);
+      
+      if (success) {
+        setTasks(tasks.filter(task => task.id !== id));
+      }
+    } catch (err: any) {
+      console.error('Error deleting task:', err);
+      setError(err.message || 'Failed to delete task');
+    }
+  };
+
   const HeaderComponent = () => (
-    <Text style={styles.sectionTitle}>My Tasks</Text>
-  );
-  
-  // Empty component for safe text rendering
-  const EmptyComponent = () => (
-    <View style={styles.emptyState}>
-      <Text style={styles.emptyText}>No tasks found</Text>
+    <View style={styles.header}>
+      <Text style={styles.headerTitle}>My Tasks</Text>
+      <TouchableOpacity 
+        style={styles.addButton}
+        onPress={() => router.push('/new-task')}
+      >
+        <Ionicons name="add-circle" size={24} color="#3b8a7a" />
+      </TouchableOpacity>
     </View>
   );
-  
+
+  const EmptyComponent = () => (
+    <View style={styles.emptyContainer}>
+      <Ionicons name="list-outline" size={64} color="#ccc" />
+      <Text style={styles.emptyText}>No tasks yet</Text>
+      <TouchableOpacity 
+        style={styles.addFirstButton}
+        onPress={() => router.push('/new-task')}
+      >
+        <Text style={styles.addFirstButtonText}>Add your first task</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
-      <Stack.Screen options={{ headerShown: false }} />
-      <StatusBar style="dark" translucent={true} backgroundColor="transparent" />
+      <StatusBar style="light" />
+      <Stack.Screen 
+        options={{ 
+          headerShown: false 
+        }} 
+      />
       
-      {/* Simplified Header with Back Button */}
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="arrow-back" size={28} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Tasks</Text>
-        <View style={styles.headerRightSpace} />
-      </View>
-
-      <View style={styles.content}>
+      <HeaderComponent />
+      
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#3b8a7a" />
+          <Text style={styles.loadingText}>Loading tasks...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle-outline" size={48} color="#ff6b6b" />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={fetchTasks}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
         <FlatList
-          data={TASKS}
-          renderItem={({ item }) => <TaskItem item={item} />}
+          data={tasks}
+          renderItem={({ item }) => (
+            <TaskItem 
+              item={item} 
+              onToggle={toggleTaskStatus}
+              onDelete={deleteTask}
+            />
+          )}
           keyExtractor={item => item.id}
-          contentContainerStyle={styles.taskList}
-          ListHeaderComponent={<HeaderComponent />}
-          ListEmptyComponent={<EmptyComponent />}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={EmptyComponent}
         />
-
-        <TouchableOpacity style={styles.addButton}>
-          <Ionicons name="add" size={24} color="white" />
-        </TouchableOpacity>
-      </View>
+      )}
     </View>
   );
 }
@@ -111,100 +183,114 @@ export default function TasksScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'white',
-    paddingTop: 0,
+    backgroundColor: '#f8f9fa',
+    paddingTop: STATUS_BAR_HEIGHT,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: STATUS_BAR_HEIGHT, // Account for status bar height
-    height: STATUS_BAR_HEIGHT + 44, // Header height + status bar
-    backgroundColor: 'white',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    zIndex: 1,
+    borderBottomColor: '#e9ecef',
   },
-  backButton: {
-    padding: 8,
-  },
-  headerRightSpace: {
-    width: 28,
-  },
-  content: {
-    flex: 1,
-    backgroundColor: 'white',
-  },
-  sectionTitle: {
-    fontSize: 22,
+  headerTitle: {
+    fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 16,
-    marginLeft: 16,
-    marginTop: 16,
+    color: '#212529',
   },
-  taskList: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
+  addButton: {
+    padding: 5,
+  },
+  listContent: {
+    flexGrow: 1,
+    padding: 20,
   },
   taskItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'white',
-    padding: 16,
-    borderRadius: 8,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 15,
     marginBottom: 10,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
   },
   checkbox: {
-    marginRight: 12,
+    marginRight: 15,
   },
   taskTitle: {
-    fontSize: 16,
     flex: 1,
+    fontSize: 16,
+    color: '#212529',
   },
   taskCompleted: {
     textDecorationLine: 'line-through',
-    color: '#888',
+    color: '#6c757d',
   },
-  emptyState: {
-    alignItems: 'center',
+  deleteButton: {
+    padding: 5,
+  },
+  emptyContainer: {
+    flex: 1,
     justifyContent: 'center',
-    padding: 24,
+    alignItems: 'center',
+    padding: 20,
   },
   emptyText: {
-    fontSize: 16,
-    color: '#888',
+    fontSize: 18,
+    color: '#6c757d',
+    marginTop: 10,
+    marginBottom: 20,
   },
-  addButton: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  addFirstButton: {
     backgroundColor: '#3b8a7a',
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 5,
   },
-  headerTitle: {
-    fontSize: 22,
+  addFirstButtonText: {
+    color: '#fff',
+    fontSize: 16,
     fontWeight: 'bold',
-    marginLeft: 16,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#6c757d',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#dc3545',
+    textAlign: 'center',
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  retryButton: {
+    backgroundColor: '#3b8a7a',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 5,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 }); 
