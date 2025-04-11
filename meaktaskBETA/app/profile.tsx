@@ -1,34 +1,131 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, StatusBar as RNStatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, StatusBar as RNStatusBar, ActivityIndicator } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
+import { authService } from '../utils/api';
 
 // Get status bar height for proper UI positioning
 const STATUS_BAR_HEIGHT = Constants.statusBarHeight || 0;
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const [userData, setUserData] = useState<{name?: string, email?: string}>({});
+  const [userData, setUserData] = useState<{
+    name?: string, 
+    email?: string, 
+    _id?: string,
+    id?: string
+  }>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
   
-  // Fetch user data on component mount
+  // Fetch user data from MongoDB on component mount
   useEffect(() => {
-    const fetchUserData = async () => {
+    const initializeUserData = async () => {
+      // First try to get cached data for immediate display
       try {
-        const userDataString = await AsyncStorage.getItem('userData');
-        if (userDataString) {
-          const parsedUserData = JSON.parse(userDataString);
-          setUserData(parsedUserData);
+        const cachedUserData = await AsyncStorage.getItem('userData');
+        if (cachedUserData) {
+          const parsedData = JSON.parse(cachedUserData);
+          console.log('Initial load - using cached data:', parsedData);
+          setUserData(parsedData);
         }
       } catch (error) {
-        console.error('Error fetching user data:', error);
+        console.error('Error loading cached user data on init:', error);
       }
+      
+      // Then fetch fresh data from backend
+      fetchUserDataFromBackend();
     };
     
-    fetchUserData();
+    initializeUserData();
   }, []);
+  
+  const fetchUserDataFromBackend = async () => {
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      // First check if we have a token
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+      
+      // Fetch user data from backend
+      const userDataFromBackend = await authService.getCurrentUser();
+      console.log('User data from backend:', userDataFromBackend);
+      
+      if (userDataFromBackend) {
+        // Check if email exists in the user data
+        const hasEmail = userDataFromBackend.email && userDataFromBackend.email.trim() !== '';
+        
+        if (hasEmail) {
+          console.log('Successfully retrieved user data with email:', userDataFromBackend.email);
+          
+          // Update state with fresh data
+          setUserData(userDataFromBackend);
+          
+          // Also update the AsyncStorage cache
+          await AsyncStorage.setItem('userData', JSON.stringify(userDataFromBackend));
+          console.log('Successfully updated user data from backend');
+        } else {
+          console.log('Backend returned data without email, checking cache...');
+          
+          // Try to get cached data with email
+          const cachedUserData = await AsyncStorage.getItem('userData');
+          if (cachedUserData) {
+            const parsedData = JSON.parse(cachedUserData);
+            console.log('Using cached user data:', parsedData);
+            
+            // If cached data has more info (like email), use it but update with new data
+            if (parsedData.email) {
+              const mergedData = { ...userDataFromBackend, email: parsedData.email };
+              console.log('Merged data from backend and cache:', mergedData);
+              setUserData(mergedData);
+              await AsyncStorage.setItem('userData', JSON.stringify(mergedData));
+            } else {
+              setUserData(parsedData);
+            }
+          } else {
+            console.log('No cached user data found with email');
+            setError('User profile incomplete. Please log out and log in again.');
+          }
+        }
+      } else {
+        console.log('Backend returned empty data, checking cache...');
+        // Fall back to cached data if backend request fails or returns incomplete data
+        const cachedUserData = await AsyncStorage.getItem('userData');
+        if (cachedUserData) {
+          const parsedData = JSON.parse(cachedUserData);
+          console.log('Using cached user data:', parsedData);
+          setUserData(parsedData);
+        } else {
+          console.log('No cached user data found');
+          setError('User profile data incomplete. Please log out and log in again.');
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching user data from backend:', error);
+      setError('Could not load user data from server');
+      
+      // Fall back to cached data
+      try {
+        const cachedUserData = await AsyncStorage.getItem('userData');
+        if (cachedUserData) {
+          const parsedData = JSON.parse(cachedUserData);
+          console.log('Falling back to cached user data after error:', parsedData);
+          setUserData(parsedData);
+        }
+      } catch (cacheError) {
+        console.error('Error reading cached user data:', cacheError);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
   
   // Set status bar configuration for this screen
   useEffect(() => {
@@ -96,12 +193,47 @@ export default function ProfileScreen() {
   
   // Render the avatar section
   const renderAvatarSection = () => {
+    // Show loading indicator while fetching data and no cached data is available
+    if (isLoading && !userData.email) {
+      return (
+        <View style={styles.avatarContainer}>
+          <ActivityIndicator size="large" color="#3b8a7a" />
+          <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
+      );
+    }
+    
+    // Show error if something went wrong and no cached data is available
+    if (error && !userData.email) {
+      return (
+        <View style={styles.avatarContainer}>
+          <View style={[styles.avatar, { backgroundColor: '#E53935' }]}>
+            <Ionicons name="alert-circle" size={40} color="white" />
+          </View>
+          <Text style={styles.name}>Error</Text>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={fetchUserDataFromBackend}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    
+    // Check specifically for email availability
+    const hasEmail = userData && userData.email && userData.email.trim() !== '';
+    
     // Get first letter of name or email for avatar
     const firstLetter = userData.name 
       ? userData.name.charAt(0).toUpperCase()
-      : userData.email
-        ? userData.email.charAt(0).toUpperCase()
+      : hasEmail
+        ? userData.email!.charAt(0).toUpperCase()
         : 'U';
+
+    // Get user ID (could be '_id' or 'id' depending on the backend)
+    const userId = userData._id || userData.id;
         
     return (
       <View style={styles.avatarContainer}>
@@ -109,7 +241,32 @@ export default function ProfileScreen() {
           <Text style={styles.avatarText}>{firstLetter}</Text>
         </View>
         <Text style={styles.name}>{userData.name || 'User'}</Text>
-        <Text style={styles.email}>{userData.email || 'No email available'}</Text>
+        
+        {hasEmail ? (
+          <Text style={styles.email}>{userData.email}</Text>
+        ) : (
+          <View style={styles.emailMissingContainer}>
+            <Text style={styles.emailMissing}>No email available</Text>
+            <TouchableOpacity 
+              style={styles.refreshButton}
+              onPress={fetchUserDataFromBackend}
+            >
+              <Ionicons name="refresh" size={16} color="#3b8a7a" />
+              <Text style={styles.refreshText}>Refresh</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        
+        {/* Show connection status if there's an error but we have cached data */}
+        {error && hasEmail && (
+          <Text style={styles.connectionError}>
+            Connected to offline mode
+          </Text>
+        )}
+        
+        {userId && (
+          <Text style={styles.userId}>User ID: {userId}</Text>
+        )}
       </View>
     );
   };
@@ -263,5 +420,58 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
+  },
+  errorText: {
+    color: '#E53935',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
+  },
+  retryButton: {
+    marginTop: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: '#3b8a7a',
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontWeight: '500',
+  },
+  userId: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 4,
+  },
+  emailMissingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  emailMissing: {
+    fontSize: 16,
+    color: '#666',
+  },
+  refreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 8,
+    padding: 4,
+  },
+  refreshText: {
+    color: '#3b8a7a',
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  connectionError: {
+    fontSize: 12,
+    color: '#E53935',
+    marginTop: 4,
   },
 }); 

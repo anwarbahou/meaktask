@@ -348,7 +348,7 @@ export default function HomeScreen() {
                 style={styles.phoneButton} 
                 onPress={handleContinueWithPhone}
               >
-                <Text style={styles.phoneButtonText}>Continue with phone number</Text>
+                <Text style={styles.phoneButtonText}>Continue with email</Text>
               </TouchableOpacity>
               
               {/* Continue with Apple Button */}

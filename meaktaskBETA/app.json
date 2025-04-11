@@ -1,26 +1,48 @@
 {
   "expo": {
-    "name": "meaktaskBETA",
-    "slug": "meaktaskBETA",
+    "name": "MeakTask",
+    "slug": "meaktask",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "meaktask",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#3b8a7a"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anwarbahou.meaktask",
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      }
+        "backgroundColor": "#3b8a7a"
+      },
+      "package": "com.anwarbahou.meaktask",
+      "runtimeVersion": "1.0.0"
     },
     "web": {
       "bundler": "metro",
       "output": "static",
       "favicon": "./assets/images/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "8bf3c66e-c978-42bd-9b4d-4a290e9b0752"
+      },
+      "router": {
+        "origin": false
+      }
     },
     "plugins": [
       "expo-router",
@@ -30,12 +52,16 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#3b8a7a"
         }
       ]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "owner": "anwarbahou",
+    "updates": {
+      "url": "https://u.expo.dev/8bf3c66e-c978-42bd-9b4d-4a290e9b0752"
     }
   }
 }

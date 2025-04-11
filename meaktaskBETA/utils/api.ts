@@ -42,7 +42,8 @@ const api = axios.create({
 api.interceptors.request.use(
   async (config) => {
     try {
-      const token = await AsyncStorage.getItem('token');
+      // Check for both token keys - 'token' and 'userToken'
+      const token = await AsyncStorage.getItem('userToken') || await AsyncStorage.getItem('token');
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -86,7 +87,12 @@ export const authService = {
       const response = await api.post('/auth/register', userData);
       console.log('Registration response:', response.data);
       if (response.data.token) {
-        await AsyncStorage.setItem('token', response.data.token);
+        // Store token with consistent key
+        await AsyncStorage.setItem('userToken', response.data.token);
+        // Also store user data directly if it exists
+        if (response.data.user) {
+          await AsyncStorage.setItem('userData', JSON.stringify(response.data.user));
+        }
       }
       return response.data;
     } catch (error: any) {
@@ -102,7 +108,12 @@ export const authService = {
       const response = await api.post('/auth/login', userData);
       console.log('Login response:', response.data);
       if (response.data.token) {
-        await AsyncStorage.setItem('token', response.data.token);
+        // Store token with consistent key
+        await AsyncStorage.setItem('userToken', response.data.token);
+        // Also store user data directly if it exists
+        if (response.data.user) {
+          await AsyncStorage.setItem('userData', JSON.stringify(response.data.user));
+        }
       }
       return response.data;
     } catch (error: any) {
@@ -114,22 +125,72 @@ export const authService = {
   // Get current user
   getCurrentUser: async () => {
     try {
+      // Log the token for debugging
+      const token = await AsyncStorage.getItem('userToken');
+      console.log('getCurrentUser - Token available:', !!token);
+      
       const response = await api.get('/users/me');
-      return response.data;
+      console.log('getCurrentUser response:', response.data);
+      
+      // Extract user data from the nested structure
+      let userData = null;
+      if (response.data && response.data.data) {
+        // Handle the nested structure where user data is in response.data.data
+        userData = response.data.data;
+        console.log('Extracted user data from nested response:', userData);
+        
+        // Store the correctly formatted userData in AsyncStorage
+        await AsyncStorage.setItem('userData', JSON.stringify(userData));
+        
+        return userData;
+      } else if (response.data && response.data.email) {
+        // Handle case where data is directly in response.data
+        userData = response.data;
+        console.log('User data is directly in response:', userData);
+        
+        // Store the userData in AsyncStorage
+        await AsyncStorage.setItem('userData', JSON.stringify(userData));
+        
+        return userData;
+      } else {
+        console.log('getCurrentUser - Invalid response format:', response.data);
+        
+        // Fall back to local data if backend fails to return valid user object
+        const cachedUserData = await AsyncStorage.getItem('userData');
+        if (cachedUserData) {
+          console.log('getCurrentUser - Using cached data instead');
+          return JSON.parse(cachedUserData);
+        }
+        
+        return null;
+      }
     } catch (error: any) {
       console.error('Get current user error:', error);
+      
+      // Fall back to local data if backend request fails
+      try {
+        const cachedUserData = await AsyncStorage.getItem('userData');
+        if (cachedUserData) {
+          console.log('getCurrentUser - Using cached data after error');
+          return JSON.parse(cachedUserData);
+        }
+      } catch (e) {
+        console.error('Failed to retrieve cached user data:', e);
+      }
+      
       throw error.response?.data?.error || 'Failed to get user data';
     }
   },
 
   // Logout user
   logout: async () => {
-    await AsyncStorage.removeItem('token');
+    await AsyncStorage.removeItem('userToken');
+    await AsyncStorage.removeItem('userData');
   },
 
   // Check if user is logged in
   isAuthenticated: async () => {
-    const token = await AsyncStorage.getItem('token');
+    const token = await AsyncStorage.getItem('userToken');
     return !!token;
   }
 };

@@ -148,7 +148,7 @@ export default function RegisterScreen() {
         password
       });
       
-      console.log('Registration successful:', response);
+      console.log('Registration successful response:', response);
       
       // Ensure token exists before storing
       if (!response || !response.token) {
@@ -158,9 +158,21 @@ export default function RegisterScreen() {
       // Store the token in AsyncStorage
       await AsyncStorage.setItem('userToken', response.token);
       
-      // Only store user data if it exists
+      // Store user data for profile access
       if (response.user) {
-        await AsyncStorage.setItem('userData', JSON.stringify(response.user));
+        // Make sure it includes name and email
+        const userData = {
+          ...response.user,
+          name: name, // Ensure name is always available
+          email: email // Ensure email is always available
+        };
+        console.log('Storing user data:', userData);
+        await AsyncStorage.setItem('userData', JSON.stringify(userData));
+      } else {
+        // If no user object in response, create user data from registration info
+        const userData = { name, email };
+        console.log('Creating user data from registration details:', userData);
+        await AsyncStorage.setItem('userData', JSON.stringify(userData));
       }
       
       // Navigate to the main screen after successful registration

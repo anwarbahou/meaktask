@@ -154,6 +154,8 @@ export default function LoginScreen() {
         password
       });
       
+      console.log('Login response data:', response);
+      
       // Ensure token exists before storing
       if (!response || !response.token) {
         throw new Error('Invalid response from server');
@@ -162,9 +164,20 @@ export default function LoginScreen() {
       // Store the token in AsyncStorage
       await AsyncStorage.setItem('userToken', response.token);
       
-      // Only store user data if it exists
+      // Store user data for profile access
       if (response.user) {
-        await AsyncStorage.setItem('userData', JSON.stringify(response.user));
+        // Make sure it includes email
+        const userData = {
+          ...response.user,
+          email: email // Ensure email is always available even if not in response
+        };
+        console.log('Storing user data:', userData);
+        await AsyncStorage.setItem('userData', JSON.stringify(userData));
+      } else {
+        // If no user object in response, create minimal user data with email
+        const userData = { email };
+        console.log('Creating minimal user data:', userData);
+        await AsyncStorage.setItem('userData', JSON.stringify(userData));
       }
       
       // Navigate to the main app after successful login
